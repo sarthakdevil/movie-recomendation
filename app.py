@@ -3,22 +3,24 @@ import pandas as pd
 import streamlit as st
 import gdown
 import os
+import io
 
-# Cache the CSV download so it's not fetched repeatedly
-@st.cache_data
-def download_csv_from_gdrive():
+# Function to stream CSV data from Google Drive
+def stream_csv_from_gdrive():
     url = 'https://drive.google.com/uc?id=1dcAQZaZ3cWc9p2HTYDfwWWlVBfsMQCDZ'  # Google Drive link
-    output = 'cosine_similarity_matrix.csv'
+    response = requests.get(url, stream=True)
     
-    # Download the file from Google Drive
-    gdown.download(url, output, quiet=False)
-    
-    # Read the CSV in chunks
-    return pd.read_csv(output, chunksize=1000)  # Adjust chunk size as needed
+    if response.status_code == 200:
+        # Create a BytesIO buffer to read the content
+        buffer = io.StringIO(response.content.decode('utf-8'))
+        for chunk in pd.read_csv(buffer, chunksize=1000):  # Adjust chunk size as needed
+            yield chunk
+    else:
+        st.error("Failed to fetch the CSV file from Google Drive.")
 
-# Load CSV containing movie titles
-chunked_df = download_csv_from_gdrive()
-df = pd.concat(chunked_df)  # Combine the chunks into a single DataFrame
+# Initialize the DataFrame
+df_chunks = stream_csv_from_gdrive()
+df = pd.concat(df_chunks)  # Combine the chunks into a single DataFrame
 names = df["original_title"]
 
 tmdb_genres = {
@@ -30,7 +32,7 @@ tmdb_genres = {
 
 # Function to fetch movie details from TMDb with pagination
 def fetch_movie(start, end):
-    api_key = os.getenv("TMDB_API_KEY")  # Use environment variable or default
+    api_key = os.getenv("TMDB_API_KEY")
     movies = []
     
     for movie in names[start:end]:
@@ -39,8 +41,8 @@ def fetch_movie(start, end):
         
         if response.status_code == 200:
             data = response.json()
-            if data['results']:  # Ensure there are results
-                movies.append(data['results'][0])  # Append the first result
+            if data['results']:
+                movies.append(data['results'][0])
 
     return movies
 
@@ -51,7 +53,7 @@ def recommendmovies(movie):
         
         if not movie_row.empty:
             similarity_scores = movie_row.iloc[0, 1:].values
-            similar_indices = similarity_scores.argsort()[-6:][::-1]  # Top 5 similar movies
+            similar_indices = similarity_scores.argsort()[-6:][::-1]  
             recommended_movies = df['original_title'].iloc[similar_indices].tolist()
             return recommended_movies
     return []
