@@ -25,7 +25,7 @@ tmdb_genres = {
 
 # Function to fetch movie details from TMDb with pagination
 def fetch_movie(start, end):
-    api_key = os.getenv("TMDB_API_KEY")  # Use environment variable or default
+    api_key = os.getenv("TMDB_API_KEY","bba4fededdbeac099653cc18b878503d")  # Use environment variable or default
     movies = []
     
     for movie in names[start:end]:
