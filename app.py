@@ -38,7 +38,7 @@ def fetch_movie(start, end):
                 movies.append(data['results'][0])
     return movies
 
-def recommendmovies(movie):
+def recommend_movies(movie):
     if movie:
         movie_row = df[df['original_title'] == movie]
         
@@ -52,7 +52,7 @@ def recommendmovies(movie):
 def display_movie_details(movie):
     st.write(f"**Release Date:** {movie.get('release_date', 'N/A')}")
     st.write(f"**Overview:** {movie.get('overview', 'No overview available.')}")
-    
+
     if 'genre_ids' in movie:
         genres = [tmdb_genres.get(genre_id, "Unknown Genre") for genre_id in movie['genre_ids']]
         st.write("**Genres:** " + ", ".join(genres))
@@ -60,11 +60,11 @@ def display_movie_details(movie):
     if movie.get('poster_path'):
         st.image(f"https://image.tmdb.org/t/p/w500{movie['poster_path']}", use_column_width=True)
 
-def displaymoviebytitle(clickedmovie):
+def display_movie_by_title(clicked_movie):
     st.session_state.clear_page = True
     
     api_key = os.getenv("TMDB_API_KEY", "bba4fededdbeac099653cc18b878503d")
-    url = f'https://api.themoviedb.org/3/search/movie?api_key={api_key}&query={clickedmovie}'
+    url = f'https://api.themoviedb.org/3/search/movie?api_key={api_key}&query={clicked_movie}'
     response = requests.get(url)
     
     if response.status_code == 200:
@@ -74,7 +74,7 @@ def displaymoviebytitle(clickedmovie):
             st.header(f"**Title:** {movie['title']}")
             display_movie_details(movie)
             
-            recommended_movies = recommendmovies(clickedmovie)
+            recommended_movies = recommend_movies(clicked_movie)
             if recommended_movies:
                 st.write("**Recommended Movies:**")
                 for rec_movie in recommended_movies:
@@ -91,7 +91,7 @@ def displaymoviebytitle(clickedmovie):
         else:
             st.write("No movie details found.")
     else:
-        st.write(f"Failed to fetch data for {clickedmovie}. Status code: {response.status_code}")
+        st.write(f"Failed to fetch data for {clicked_movie}. Status code: {response.status_code}")
 
 def display_movies(movies):
     for movie in movies:
@@ -99,16 +99,17 @@ def display_movies(movies):
             display_movie_details(movie)
 
             if st.button(f"More details about {movie['title']}", key=f"details_{movie['title']}"):
-                st.session_state.clickedmovie = movie['title']
-                st.experimental_rerun()
+                st.session_state.clicked_movie = movie['title']
+                st.session_state.page = 1  # Reset page for new search
+                st.rerun()  # Trigger rerun
 
 movies_per_page = 20
 
 if 'page' not in st.session_state:
     st.session_state.page = 1
 
-if 'clickedmovie' in st.session_state:
-    displaymoviebytitle(st.session_state.clickedmovie)
+if 'clicked_movie' in st.session_state:
+    display_movie_by_title(st.session_state.clicked_movie)
 else:
     start_index = (st.session_state.page - 1) * movies_per_page
     end_index = start_index + movies_per_page
@@ -126,10 +127,10 @@ else:
         if st.session_state.page > 1:
             if st.button("Previous"):
                 st.session_state.page -= 1
-                st.experimental_rerun()
+                st.rerun()  # Trigger rerun
 
     with col2:
         if st.session_state.page * movies_per_page < len(names):
             if st.button("Next"):
                 st.session_state.page += 1
-                st.experimental_rerun()
+                st.rerun()  # Trigger rerun
