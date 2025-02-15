@@ -58,7 +58,7 @@ def display_movie_details(movie):
         st.write("**Genres:** " + ", ".join(genres))
         
     if movie.get('poster_path'):
-        st.image(f"https://image.tmdb.org/t/p/w500{movie['poster_path']}", use_column_width=True)
+        st.image(f"https://image.tmdb.org/t/p/w500{movie['poster_path']}", use_container_width=True)
 
 def display_movie_by_title(clicked_movie):
     st.session_state.clear_page = True
