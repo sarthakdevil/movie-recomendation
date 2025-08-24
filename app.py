@@ -639,12 +639,10 @@ def display_movie_card(movie, show_recommendations=False):
                             with st.expander(f"🎬 {rec_movie_detail['title']}{release_info}"):
                                 display_movie_card(rec_movie_detail, show_recommendations=False)
                         else:
-                            # Show basic recommendation even if TMDB doesn't have details
                             with st.expander(f"🎬 {rec_movie} (Recommended)"):
                                 st.write(f"**Movie:** {rec_movie}")
                                 st.write("*Details not available from TMDB database*")
                     else:
-                        # Show basic recommendation if API call failed
                         with st.expander(f"🎬 {rec_movie} (Recommended)"):
                             st.write(f"**Movie:** {rec_movie}")
                             st.write("*Unable to fetch additional details*")
@@ -654,7 +652,6 @@ def display_movie_card(movie, show_recommendations=False):
                         st.write(f"**Movie:** {rec_movie}")
                         st.write("*Timeout loading details*")
                 except Exception as e:
-                    # Still show the recommendation even if we can't get details
                     with st.expander(f"🎬 {rec_movie} (Recommended)"):
                         st.write(f"**Movie:** {rec_movie}")
                         st.write(f"*Error loading details: {str(e)}*")
