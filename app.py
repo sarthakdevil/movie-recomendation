@@ -85,19 +85,108 @@ st.markdown("""
 
 @st.cache_data
 def download_csv():
-    """Download and cache the cosine similarity matrix CSV"""
+    """Download and cache the cosine similarity matrix CSV with robust error handling"""
     output = 'cosine_similarity_matrix.csv'
     
     if not os.path.exists(output):
-        with st.spinner('🎬 Loading movie database...'):
-            url = 'https://drive.google.com/file/d/13N5MEn8yRkbHqnYYrdn1jXq4XGZewrir'
-            gdown.download(url, output, quiet=False)
+        try:
+            # Show download progress to user
+            download_placeholder = st.empty()
+            with download_placeholder.container():
+                st.info("🎬 First time setup: Downloading movie database (437 MB)...")
+                st.info("⏳ This may take 2-3 minutes depending on your connection...")
+                
+                progress_bar = st.progress(0)
+                status_text = st.empty()
+                
+                # Google Drive direct download URL (bypass confirmation)
+                file_id = '13N5MEn8yRkbHqnYYrdn1jXq4XGZewrir'
+                url = f'https://drive.google.com/uc?export=download&id={file_id}'
+                
+                # Try gdown first
+                try:
+                    status_text.text("Attempting download via gdown...")
+                    progress_bar.progress(0.1)
+                    
+                    import gdown
+                    gdown.download(f'https://drive.google.com/file/d/{file_id}', output, quiet=False)
+                    progress_bar.progress(1.0)
+                    status_text.text("Download completed!")
+                    
+                except Exception as gdown_error:
+                    st.warning(f"gdown failed: {gdown_error}")
+                    status_text.text("Trying alternative download method...")
+                    progress_bar.progress(0.3)
+                    
+                    # Fallback: Direct requests download
+                    response = requests.get(url, stream=True, timeout=300)
+                    response.raise_for_status()
+                    
+                    total_size = int(response.headers.get('content-length', 0))
+                    downloaded_size = 0
+                    
+                    with open(output, 'wb') as file:
+                        for chunk in response.iter_content(chunk_size=8192):
+                            if chunk:
+                                file.write(chunk)
+                                downloaded_size += len(chunk)
+                                if total_size > 0:
+                                    progress = 0.3 + (downloaded_size / total_size) * 0.7
+                                    progress_bar.progress(min(progress, 1.0))
+                                    status_text.text(f"Downloaded: {downloaded_size / (1024*1024):.1f} MB")
+                    
+                    progress_bar.progress(1.0)
+                    status_text.text("Download completed via fallback method!")
+                
+            # Clear download UI
+            download_placeholder.empty()
+            
+        except Exception as e:
+            st.error(f"❌ Failed to download movie database: {str(e)}")
+            st.error("Please check your internet connection and refresh the page.")
+            st.info("If the problem persists, the Google Drive file might be temporarily unavailable.")
+            return None
     
-    return pd.read_csv(output)
+    # Verify file exists and load it
+    if os.path.exists(output):
+        try:
+            file_size = os.path.getsize(output) / (1024 * 1024)  # Size in MB
+            if file_size < 50:  # File should be ~437 MB, so if it's less than 50MB, it's likely corrupted
+                st.warning("Downloaded file appears to be corrupted. Removing and retrying...")
+                os.remove(output)
+                return download_csv()  # Recursive retry
+            
+            st.success(f"✅ Movie database loaded successfully! (File size: {file_size:.1f} MB)")
+            return pd.read_csv(output, index_col=0)
+            
+        except Exception as e:
+            st.error(f"❌ Failed to read CSV file: {str(e)}")
+            st.info("The file may be corrupted. Try refreshing the page to re-download.")
+            return None
+    else:
+        st.error("❌ CSV file not found after download attempt.")
+        return None
+
+# Initialize data with error handling
+def initialize_data():
+    """Initialize the movie data with proper error handling"""
+    try:
+        df = download_csv()
+        if df is not None:
+            names = df.columns[1:] if len(df.columns) > 1 else df["original_title"]  # Adjust based on CSV structure
+            return df, names
+        else:
+            return None, None
+    except Exception as e:
+        st.error(f"Failed to initialize data: {str(e)}")
+        return None, None
 
 # Initialize data
-df = download_csv()
-names = df["original_title"]
+data_init = initialize_data()
+if data_init[0] is not None:
+    df, names = data_init
+else:
+    st.stop()  # Stop execution if data couldn't be loaded
 
 tmdb_genres = {
     28: "Action", 12: "Adventure", 16: "Animation", 35: "Comedy", 80: "Crime",
@@ -159,7 +248,7 @@ def display_movie_card(movie, show_recommendations=False):
         if movie.get('poster_path'):
             st.image(
                 f"https://image.tmdb.org/t/p/w500{movie['poster_path']}", 
-                use_container_width=True,
+                use_column_width=True,
                 caption=movie['title']
             )
         else:
@@ -233,6 +322,11 @@ def display_movie_card(movie, show_recommendations=False):
 
 def main():
     """Main application function"""
+    # Check if data is loaded
+    if df is None:
+        st.error("❌ Movie database could not be loaded. Please refresh the page.")
+        st.stop()
+    
     # Header
     st.markdown('<h1 class="main-header">🎬 CinemaScope</h1>', unsafe_allow_html=True)
     st.markdown('<p class="subtitle">Discover your next favorite movie with AI-powered recommendations</p>', unsafe_allow_html=True)
