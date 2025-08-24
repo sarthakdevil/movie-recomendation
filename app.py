@@ -651,12 +651,31 @@ def display_movie_card(movie, show_recommendations=False):
                     with st.expander(f"🎬 {rec_movie} (Recommended)"):
                         st.write(f"**Movie:** {rec_movie}")
                         st.write("*Timeout loading details*")
+<<<<<<< HEAD
                 except Exception as e:
                     with st.expander(f"🎬 {rec_movie} (Recommended)"):
                         st.write(f"**Movie:** {rec_movie}")
                         st.write(f"*Error loading details: {str(e)}*")
         else:
             st.info("💡 No recommendations found. This movie might not be in our similarity database, or try searching for a different title variation.")
+=======
+                except Exception as e:
+                    with st.expander(f"🎬 {rec_movie} (Recommended)"):
+                        st.write(f"**Movie:** {rec_movie}")
+                        st.write(f"*Error loading details: {str(e)}*")
+        else:
+            st.info("💡 No recommendations found. This movie might not be in our similarity database, or try searching for a different title variation.")
+                                                            display_movie_card(rec_movie_detail, show_recommendations=False)
+                        else:
+                            st.warning(f"No details found for recommended movie: {rec_movie}")
+                except requests.exceptions.Timeout:
+                    st.warning(f"Timeout loading details for '{rec_movie}'")
+                except Exception as e:
+                    st.error(f"Failed to fetch details for '{rec_movie}': {str(e)}")
+        else:
+            st.info("No recommendations found. This might be due to the movie not being in our similarity database.")
+            st.write(f"Debug: Searched for '{movie_title_for_search}' in recommendations database")
+>>>>>>> 76d3e77b438677e6f196352082d7b3d4f3ce6876
 
 def main():
     """Main application function"""
