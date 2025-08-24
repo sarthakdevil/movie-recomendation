@@ -627,15 +627,32 @@ def display_movie_card(movie, show_recommendations=False):
                         if rec_data['results']:
                             rec_movie_detail = rec_data['results'][0]
                             
-                            with st.expander(f"🎬 {rec_movie_detail['title']} ({rec_movie_detail.get('release_date', 'N/A')[:4] if rec_movie_detail.get('release_date') else 'N/A'})"):
+                            # Safe string formatting for release date
+                            release_info = ""
+                            if rec_movie_detail.get('release_date'):
+                                try:
+                                    release_year = rec_movie_detail['release_date'][:4]
+                                    release_info = f" ({release_year})"
+                                except:
+                                    release_info = ""
+                            
+                            with st.expander(f"🎬 {rec_movie_detail['title']}{release_info}"):
                                 display_movie_card(rec_movie_detail, show_recommendations=False)
                         else:
                             # Show basic recommendation even if TMDB doesn't have details
                             with st.expander(f"🎬 {rec_movie} (Recommended)"):
                                 st.write(f"**Movie:** {rec_movie}")
                                 st.write("*Details not available from TMDB database*")
+                    else:
+                        # Show basic recommendation if API call failed
+                        with st.expander(f"🎬 {rec_movie} (Recommended)"):
+                            st.write(f"**Movie:** {rec_movie}")
+                            st.write("*Unable to fetch additional details*")
+                            
                 except requests.exceptions.Timeout:
-                    st.warning(f"Timeout loading details for '{rec_movie}'")
+                    with st.expander(f"🎬 {rec_movie} (Recommended)"):
+                        st.write(f"**Movie:** {rec_movie}")
+                        st.write("*Timeout loading details*")
                 except Exception as e:
                     # Still show the recommendation even if we can't get details
                     with st.expander(f"🎬 {rec_movie} (Recommended)"):
@@ -643,7 +660,7 @@ def display_movie_card(movie, show_recommendations=False):
                         st.write(f"*Error loading details: {str(e)}*")
         else:
             st.info("💡 No recommendations found. This movie might not be in our similarity database, or try searching for a different title variation.")
-                        with st.expander(f"🎬 {rec_movie_detail['title']} ({rec_movie_detail.get('release_date', 'N/A')[:4] if rec_movie_detail.get('release_date') else 'N/A'})"):
+                            with st.expander(f"🎬 {rec_movie_detail['title']} ({rec_movie_detail.get('release_date', 'N/A')[:4] if rec_movie_detail.get('release_date') else 'N/A'})"):
                                 display_movie_card(rec_movie_detail, show_recommendations=False)
                         else:
                             st.warning(f"No details found for recommended movie: {rec_movie}")
