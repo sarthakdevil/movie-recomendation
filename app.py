@@ -180,83 +180,108 @@ def download_csv():
                 # Track download start time
                 start_time = time.time()
                 
-                # Try gdown first with timeout
+                # Try gdown first with enhanced settings
                 try:
                     with status_container:
                         st.info("📡 Attempting download via gdown (recommended method)...")
                     
                     progress_bar.progress(0.05)
                     
-                    # Custom gdown download with progress tracking
                     import gdown
                     
-                    def progress_callback(current, total):
-                        if total > 0:
-                            progress = current / total
-                            progress_bar.progress(min(progress * 0.95, 0.95))  # Reserve last 5% for verification
-                            
-                            elapsed_time = time.time() - start_time
-                            speed = current / elapsed_time if elapsed_time > 0 else 0
-                            eta = calculate_eta(current, total, elapsed_time)
-                            
-                            with status_container:
-                                col1, col2, col3, col4 = st.columns(4)
-                                with col1:
-                                    st.metric("Downloaded", format_bytes(current))
-                                with col2:
-                                    st.metric("Total Size", format_bytes(total))
-                                with col3:
-                                    st.metric("Speed", f"{format_bytes(speed)}/s" if speed > 0 else "Calculating...")
-                                with col4:
-                                    st.metric("ETA", eta)
-                                
-                                # Progress percentage
-                                st.markdown(f"""
-                                <div style='text-align: center; margin-top: 10px;'>
-                                    <span class="speed-indicator">
-                                        {progress * 100:.1f}% Complete
-                                    </span>
-                                </div>
-                                """, unsafe_allow_html=True)
+                    # Use gdown with fuzzy matching for large files
+                    url = f'https://drive.google.com/file/d/{file_id}/view?usp=sharing'
                     
-                    # Download with gdown
-                    gdown.download(
-                        f'https://drive.google.com/file/d/{file_id}', 
-                        output, 
-                        quiet=False,
-                        timeout=600  # 10 minute timeout
-                    )
-                    
-                    progress_bar.progress(1.0)
                     with status_container:
-                        st.success("✅ Download completed successfully via gdown!")
+                        st.info("🔄 Initiating secure download from Google Drive...")
                     
+                    # Download with gdown - it handles Google Drive authentication automatically
+                    success = gdown.download(url, output, quiet=False, fuzzy=True)
+                    
+                    if success and os.path.exists(output) and os.path.getsize(output) > 50 * 1024 * 1024:
+                        progress_bar.progress(1.0)
+                        with status_container:
+                            st.success("✅ Download completed successfully via gdown!")
+                    else:
+                        raise Exception("gdown download failed or file is too small")
+                
                 except Exception as gdown_error:
                     st.warning(f"⚠️ gdown method failed: {str(gdown_error)}")
                     
+                    # Clean up failed download
+                    if os.path.exists(output):
+                        os.remove(output)
+                    
                     with status_container:
-                        st.info("🔄 Switching to fallback download method...")
+                        st.info("🔄 Trying advanced Google Drive download method...")
                     
                     progress_bar.progress(0.1)
                     
-                    # Fallback: Direct requests download with enhanced progress tracking
+                    # Enhanced fallback method for Google Drive large files
                     try:
-                        url = f'https://drive.google.com/uc?export=download&id={file_id}'
+                        session = requests.Session()
                         
-                        # Initial request with timeout
-                        response = requests.get(
-                            url, 
-                            stream=True, 
-                            timeout=(30, 600),  # 30s connection, 10min read timeout
-                            headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
+                        # Step 1: Get initial response
+                        url = f'https://drive.google.com/uc?export=download&id={file_id}'
+                        response = session.get(
+                            url,
+                            timeout=(30, 60),
+                            headers={
+                                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+                            }
                         )
+                        
+                        # Step 2: Handle virus scan warning for large files
+                        if 'virus scan warning' in response.text.lower() or 'confirm=' in response.text:
+                            with status_container:
+                                st.info("🔍 Handling Google Drive virus scan confirmation...")
+                            
+                            # Extract confirmation token
+                            confirm_token = None
+                            for line in response.text.split('\n'):
+                                if 'confirm=' in line:
+                                    import re
+                                    match = re.search(r'confirm=([^&"\']+)', line)
+                                    if match:
+                                        confirm_token = match.group(1)
+                                        break
+                            
+                            if not confirm_token:
+                                # Alternative method to find confirm token
+                                soup_text = response.text
+                                if 'confirm=' in soup_text:
+                                    start = soup_text.find('confirm=') + 8
+                                    end = soup_text.find('&', start)
+                                    if end == -1:
+                                        end = soup_text.find('"', start)
+                                    if end == -1:
+                                        end = soup_text.find("'", start)
+                                    if end > start:
+                                        confirm_token = soup_text[start:end]
+                            
+                            if confirm_token:
+                                # Download with confirmation token
+                                download_url = f'https://drive.google.com/uc?export=download&confirm={confirm_token}&id={file_id}'
+                                response = session.get(
+                                    download_url,
+                                    stream=True,
+                                    timeout=(30, 900),  # 15 minute timeout for large file
+                                    headers={
+                                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+                                    }
+                                )
+                            else:
+                                raise Exception("Could not extract confirmation token from Google Drive")
+                        
                         response.raise_for_status()
                         
-                        # Get file size
+                        # Get file size from headers or use expected size
                         total_size = int(response.headers.get('content-length', expected_size))
                         downloaded_size = 0
-                        chunk_size = 8192
-                        start_time = time.time()
+                        chunk_size = 32768  # 32KB chunks for better performance
+                        
+                        with status_container:
+                            st.info(f"📥 Starting download of {format_bytes(total_size)}...")
                         
                         with open(output, 'wb') as file:
                             for chunk in response.iter_content(chunk_size=chunk_size):
@@ -264,8 +289,8 @@ def download_csv():
                                     file.write(chunk)
                                     downloaded_size += len(chunk)
                                     
-                                    # Update progress every MB or every 100 chunks
-                                    if downloaded_size % (1024 * 1024) == 0 or downloaded_size == total_size:
+                                    # Update progress every 5MB for smoother UI
+                                    if downloaded_size % (5 * 1024 * 1024) == 0 or downloaded_size >= total_size:
                                         progress = 0.1 + (downloaded_size / total_size) * 0.85
                                         progress_bar.progress(min(progress, 0.95))
                                         
@@ -298,15 +323,15 @@ def download_csv():
                         with status_container:
                             total_time = time.time() - start_time
                             avg_speed = downloaded_size / total_time if total_time > 0 else 0
-                            st.success(f"✅ Download completed via fallback method!")
+                            st.success(f"✅ Download completed via advanced method!")
                             st.info(f"📊 Final Stats: {format_bytes(downloaded_size)} in {total_time:.1f}s (avg: {format_bytes(avg_speed)}/s)")
                     
                     except requests.exceptions.Timeout:
-                        raise Exception("Download timeout - please check your internet connection and try again")
+                        raise Exception("Download timeout - the file is very large. Please try again with a stable internet connection.")
                     except requests.exceptions.ConnectionError:
-                        raise Exception("Connection error - please check your internet connection")
+                        raise Exception("Connection error - please check your internet connection and try again.")
                     except Exception as fallback_error:
-                        raise Exception(f"Fallback download failed: {str(fallback_error)}")
+                        raise Exception(f"Advanced download method failed: {str(fallback_error)}")
                 
                 # File verification
                 with status_container:
@@ -320,10 +345,11 @@ def download_csv():
         except Exception as e:
             st.error(f"❌ Failed to download movie database: {str(e)}")
             st.error("💡 Troubleshooting tips:")
-            st.error("• Check your internet connection")
-            st.error("• Try refreshing the page")
-            st.error("• If using corporate network, firewall may be blocking the download")
+            st.error("• Check your internet connection stability")
+            st.error("• Try refreshing the page to retry download")
+            st.error("• If using corporate/school network, firewall may block large downloads")
             st.error("• The Google Drive file might be temporarily unavailable")
+            st.error("• Try downloading at a different time if network is congested")
             
             if os.path.exists(output):
                 os.remove(output)  # Clean up partial download
