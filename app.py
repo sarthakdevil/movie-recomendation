@@ -100,7 +100,7 @@ def download_csv():
                 status_text = st.empty()
                 
                 # Google Drive direct download URL (bypass confirmation)
-                file_id = '13N5MEn8yRkbHqnYYrdn1jXq4XGZewrir'
+                file_id = '1MSeuaiDdUD5wgamiVTLkWz2u68qfji82'
                 url = f'https://drive.google.com/uc?export=download&id={file_id}'
                 
                 # Try gdown first
