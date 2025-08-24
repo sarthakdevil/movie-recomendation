@@ -390,7 +390,22 @@ def initialize_data():
     try:
         df = download_csv()
         if df is not None:
-            names = df.columns[1:] if len(df.columns) > 1 else df["original_title"]  # Adjust based on CSV structure
+            # Try to get movie names from different possible sources
+            if 'original_title' in df.columns:
+                names = df['original_title'].tolist()
+            elif df.index.name == 'original_title':
+                names = df.index.tolist()
+            elif len(df.columns) > 1:
+                # For cosine similarity matrix, movie names are usually in columns
+                names = df.columns.tolist()
+            else:
+                st.error("Could not determine movie names from CSV structure")
+                return None, None
+            
+            # Remove any non-string entries and clean up
+            names = [str(name) for name in names if str(name).strip() and str(name) != 'nan']
+            
+            st.success(f"✅ Loaded {len(names)} movies from database")
             return df, names
         else:
             return None, None
@@ -473,14 +488,61 @@ def fetch_movie_data(start, end):
 
 def get_movie_recommendations(movie_title):
     """Get movie recommendations based on cosine similarity"""
-    if movie_title:
-        movie_row = df[df['original_title'] == movie_title]
+    if not movie_title or df is None:
+        return []
         
-        if not movie_row.empty:
-            similarity_scores = movie_row.iloc[0, 1:].values
-            similar_indices = similarity_scores.argsort()[-6:][::-1][1:]  # Top 5 similar movies (excluding self)
-            recommended_movies = df['original_title'].iloc[similar_indices].tolist()
+    try:
+        # Clean the movie title for better matching
+        movie_title = str(movie_title).strip()
+        
+        # Method 1: Check if movie_title is in the columns (typical cosine similarity matrix)
+        if movie_title in df.columns:
+            # Get similarity scores for this movie
+            if movie_title in df.index:
+                similarity_scores = df.loc[movie_title]
+            else:
+                # Try to find the row that best represents this movie
+                similarity_scores = df[movie_title]
+            
+            # Get top similar movies
+            if hasattr(similarity_scores, 'sort_values'):
+                similar_movies = similarity_scores.sort_values(ascending=False).head(6)
+                recommended_movies = [name for name in similar_movies.index 
+                                    if name != movie_title and str(name).strip()][:5]
+            else:
+                import numpy as np
+                similar_indices = np.argsort(similarity_scores.values)[-6:][::-1]
+                all_movie_names = df.columns.tolist()
+                recommended_movies = [all_movie_names[i] for i in similar_indices 
+                                    if i < len(all_movie_names) and all_movie_names[i] != movie_title][:5]
+            
             return recommended_movies
+        
+        # Method 2: Check if movie_title is in the index
+        elif movie_title in df.index:
+            similarity_scores = df.loc[movie_title]
+            similar_movies = similarity_scores.sort_values(ascending=False).head(6)
+            recommended_movies = [name for name in similar_movies.index 
+                                if name != movie_title and str(name).strip()][:5]
+            return recommended_movies
+        
+        # Method 3: Try fuzzy matching for slight name differences
+        else:
+            # Look for partial matches in columns
+            possible_matches = [col for col in df.columns if movie_title.lower() in col.lower()]
+            if possible_matches:
+                best_match = possible_matches[0]
+                return get_movie_recommendations(best_match)
+            
+            # Look for partial matches in index
+            possible_matches = [idx for idx in df.index if movie_title.lower() in str(idx).lower()]
+            if possible_matches:
+                best_match = possible_matches[0]
+                return get_movie_recommendations(best_match)
+                
+    except Exception as e:
+        st.warning(f"Error getting recommendations for '{movie_title}': {str(e)}")
+            
     return []
 
 def display_movie_card(movie, show_recommendations=False):
@@ -491,7 +553,7 @@ def display_movie_card(movie, show_recommendations=False):
         if movie.get('poster_path'):
             st.image(
                 f"https://image.tmdb.org/t/p/w500{movie['poster_path']}", 
-                use_column_width=True,
+                use_container_width=True,
                 caption=movie['title']
             )
         else:
@@ -545,7 +607,10 @@ def display_movie_card(movie, show_recommendations=False):
     if show_recommendations:
         st.markdown('<div class="recommendation-header">🎯 Recommended Movies Based on This Selection</div>', unsafe_allow_html=True)
         
-        recommended_movies = get_movie_recommendations(movie['title'])
+        # Use the movie title to get recommendations
+        movie_title_for_search = movie.get('title', movie.get('original_title', ''))
+        recommended_movies = get_movie_recommendations(movie_title_for_search)
+        
         if recommended_movies:
             for rec_movie in recommended_movies[:5]:  # Limit to top 5
                 try:
@@ -564,10 +629,31 @@ def display_movie_card(movie, show_recommendations=False):
                             
                             with st.expander(f"🎬 {rec_movie_detail['title']} ({rec_movie_detail.get('release_date', 'N/A')[:4] if rec_movie_detail.get('release_date') else 'N/A'})"):
                                 display_movie_card(rec_movie_detail, show_recommendations=False)
+                        else:
+                            # Show basic recommendation even if TMDB doesn't have details
+                            with st.expander(f"🎬 {rec_movie} (Recommended)"):
+                                st.write(f"**Movie:** {rec_movie}")
+                                st.write("*Details not available from TMDB database*")
+                except requests.exceptions.Timeout:
+                    st.warning(f"Timeout loading details for '{rec_movie}'")
+                except Exception as e:
+                    # Still show the recommendation even if we can't get details
+                    with st.expander(f"🎬 {rec_movie} (Recommended)"):
+                        st.write(f"**Movie:** {rec_movie}")
+                        st.write(f"*Error loading details: {str(e)}*")
+        else:
+            st.info("💡 No recommendations found. This movie might not be in our similarity database, or try searching for a different title variation.")
+                            with st.expander(f"🎬 {rec_movie_detail['title']} ({rec_movie_detail.get('release_date', 'N/A')[:4] if rec_movie_detail.get('release_date') else 'N/A'})"):
+                                display_movie_card(rec_movie_detail, show_recommendations=False)
+                        else:
+                            st.warning(f"No details found for recommended movie: {rec_movie}")
                 except requests.exceptions.Timeout:
                     st.warning(f"Timeout loading details for '{rec_movie}'")
                 except Exception as e:
                     st.error(f"Failed to fetch details for '{rec_movie}': {str(e)}")
+        else:
+            st.info("No recommendations found. This might be due to the movie not being in our similarity database.")
+            st.write(f"Debug: Searched for '{movie_title_for_search}' in recommendations database")
 
 def main():
     """Main application function"""
