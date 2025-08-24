@@ -1,0 +1,12 @@
+[project]
+name = "recomendation"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "gdown>=5.2.0",
+    "pandas>=2.3.2",
+    "requests>=2.32.5",
+    "streamlit>=1.48.1",
+]
