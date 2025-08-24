@@ -1,1 +1,1 @@
-https://sarthakdevil-movie-recomendation-app-iyj3q8.streamlit.app/
+https://movie-recomendation-njfspbrypzn7zr7s6hzduu.streamlit.app/
