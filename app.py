@@ -643,7 +643,7 @@ def display_movie_card(movie, show_recommendations=False):
                         st.write(f"*Error loading details: {str(e)}*")
         else:
             st.info("💡 No recommendations found. This movie might not be in our similarity database, or try searching for a different title variation.")
-                            with st.expander(f"🎬 {rec_movie_detail['title']} ({rec_movie_detail.get('release_date', 'N/A')[:4] if rec_movie_detail.get('release_date') else 'N/A'})"):
+                        with st.expander(f"🎬 {rec_movie_detail['title']} ({rec_movie_detail.get('release_date', 'N/A')[:4] if rec_movie_detail.get('release_date') else 'N/A'})"):
                                 display_movie_card(rec_movie_detail, show_recommendations=False)
                         else:
                             st.warning(f"No details found for recommended movie: {rec_movie}")
